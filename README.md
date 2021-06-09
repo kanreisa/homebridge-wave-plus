@@ -1,36 +1,42 @@
-# homebridge-airthings-wave-plus
-With this [Homebridge](https://github.com/nfarina/homebridge) plugin you can use [Airthings WavePlus](https://www.airthings.com/wave-plus) with [Apple HomeKit](https://www.apple.com/ios/home/).
+Note: This plugin has forked from [ecoen66/homebridge-wave-plus](https://github.com/ecoen66/homebridge-wave-plus) but it was not work.
+so, almost re-implemented to working completely.
 
-This code is heavily based on the work of iler's [homebridge-airthings-waveplus](https://github.com/iler/homebridge-airthings-waveplus) accessory, and the work of [pakastin](https://github.com/pakastin/homebridge-ruuvitag)!
+# @kanreisa/homebridge-wave-plus
 
-This code is a work in progress.  There is currently a known issue around a bluetooth buffer overflow error in @abandonware/noble:
-"processLeAdvertisingReport: Caught illegal packet (buffer overflow): RangeError [ERR_OUT_OF_RANGE]: The value of "offset" is out of range. It must be >= 0 and <= 4. Received 6"
+A Homebridge Plugin for Airthings Wave Plus. w/ InfluxDB v2 Support.
 
-# Configuration
+## Prerequisites
 
-Example accessory config (needs to be added to the homebridge config.json):
- ...
+- [Homebridge](https://github.com/homebridge/homebridge) installed Bluetooth LE enabled computer.
+  - tested: Raspberry Pi 3B+
+- [Airthings Wave Plus](https://www.airthings.com/wave-plus)
 
-		"accessories": [
-      {
-				"name": "Living Room WavePlus",
-				"serialNumber": "1234567890",
-				"disableTemp": false,
-				"disableHumidity": false,
-				"frequency": 60,
-				"accessory": "Airthings WavePlus"
-			}
-    ]
- ...
+## HomeKit Supported Sensors
 
-### Config Explanation:
+Due to HomeKit limitations, the following sensors are currently enabled.
 
-Field           			| Description
-----------------------------|------------
-**accessory**   			| (required) Must always be "Airthings WavePlus".
-**name**							| (required) The name you want to use for for the WavePlus in HomeKit.
-**serialNumber**			| (required) This shows up in the homekit accessory Characteristics and is used to index the control.
-**disableTemp**  			| (optional) Display a Temperature widget? Boolean value defaults to False if not present.
-**disableHumidity**		| (optional) Display a Humidity widget? Boolean value defaults to False if not present
-**frequency**					| (optional) Frequency in seconds to update readings in HomeKit.
+- Air Quality (w/ VOC)
+- CO2
+- Humidity
+- Temp
 
+## InfluxDB v2 Outputs
+
+measurement: **air-quality**
+
+| field | sensor | units | Comments |
+|-------|--------|-------|----------|
+| `rssi` | - | dBm | BLE received signal strength
+| `humidity` | Humidity | %rH | 
+| `temp` | Temperature | &deg;C |
+| `radonStAvg` | Radon short term average | Bq/㎥ | First measurement available 1 hour after inserting batteries
+| `radonLtAvg` | Radon long term average | Bq/㎥ | First measurement available 1 hour after inserting batteries
+| `pressure` | Relative atmospheric pressure | hPa |
+| `co2` | CO2 level | ppm |
+| `voc` | TVOC level | ppb | Total volatile organic compounds level
+
+sensor descriptions quoted from [Airthings/waveplus-reader](https://github.com/Airthings/waveplus-reader).
+
+## Configuration
+
+All configuration can set on UI.
