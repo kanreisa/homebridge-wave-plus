@@ -1,42 +1,97 @@
 {
-	"pluginAlias": "Airthings WavePlus",
-	"pluginType": "accessory",
-	"schema": {
-		"name": {
-			"title": "Name",
-			"type": "string",
-			"required": true,
-      "description": "The WavePlus device name to show in HomeKit.",
-			"default": "My WavePlus"
-		},
-		"serialNumber": {
-			"title": "Serial Number",
-			"type": "string",
-			"required": true,
-      "description": "The WavePlus serial number from the device's sticker.",
-			"default": "1234567890"
-		},
-		"disableTemp": {
-			"title": "disableTemp",
-			"type": "boolean",
-			"required": false,
-      "description": "If false, will display the WavePlus temperature reading in HomeKit.",
-			"default": "false"
-		},
-		"disableHumidity": {
-			"title": "disableHumidity",
-			"type": "boolean",
-			"required": false,
-      "description": "If false, will display the WavePlus humidity reading in HomeKit.",
-			"default": "false"
-		},
-		"frequency": {
-			"title": "frequency",
-			"type": "integer",
-			"required": false,
-      "description": "If set, provides the frequency (in seconds) for updating HomeKit.",
-			"default": 60
-		}
-	}
+  "pluginAlias": "Homebridge Wave Plus",
+  "pluginType": "accessory",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "required": true,
+        "description": "The Wave Plus device name to show in HomeKit.",
+        "default": "My Wave Plus"
+      },
+      "serialNumber": {
+        "type": "string",
+        "required": true,
+        "description": "The Wave Plus Serial No. (label is located in back side of the device.)",
+        "placeholder": "1234567890"
+      },
+      "frequency": {
+        "type": "integer",
+        "required": true,
+        "description": "updating frequency (in seconds)",
+        "default": 60,
+        "minimum": 60
+      },
+      "disableAQ": {
+        "title": "Disable Air Quality",
+        "type": "boolean",
+        "default": false
+      },
+      "disableCO2": {
+        "title": "Disable CO2",
+        "type": "boolean",
+        "default": false
+      },
+      "disableHumidity": {
+        "title": "Disable Humidity",
+        "type": "boolean",
+        "default": false
+      },
+      "disableTemp": {
+        "title": "Disable Temp",
+        "type": "boolean",
+        "default": false
+      },
+      "influxURL": {
+        "type": "string",
+        "description": "InfluxDB v2 URL",
+        "default": "http://localhost:8086",
+        "placeholder": "http://localhost:8086"
+      },
+      "influxToken": {
+        "type": "string",
+        "description": "",
+        "placeholder": "(required to write InfluxDB)"
+      },
+      "influxOrg": {
+        "type": "string",
+        "description": "",
+        "placeholder": "(required to write InfluxDB)"
+      },
+      "influxBucket": {
+        "type": "string",
+        "description": "",
+        "placeholder": "(required to write InfluxDB)"
+      }
+    }
+  },
+  "form": [
+    "name",
+    "serialNumber",
+    "frequency",
+    {
+      "type": "fieldset",
+      "expandable": true,
+      "title": "Disabled Sensors",
+      "items": [
+        "disableAQ",
+        "disableCO2",
+        "disableHumidity",
+        "disableTemp"
+      ]
+    },
+    {
+      "type": "fieldset",
+      "expandable": true,
+      "title": "InfluxDB (Advanced)",
+      "description": "Output all sensor data to InfluxDB (disable settings are not affected)",
+      "items": [
+        "influxURL",
+        "influxToken",
+        "influxOrg",
+        "influxBucket"
+      ]
+    }
+  ]
 }
-
