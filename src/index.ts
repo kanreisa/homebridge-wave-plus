@@ -2,12 +2,14 @@ import { API, AccessoryPlugin, Logger, AccessoryConfig, Service, Characteristic 
 import { InfluxDB, WriteApi, Point, HttpError } from "@influxdata/influxdb-client";
 import noble = require("noble");
 import struct = require("python-struct");
+import Queue = require("promise-queue");
 
 export = (api: API) => {
     api.registerAccessory("homebridge-wave-plus", "Homebridge Wave Plus", HomebridgeWavePlusPlugin);
 };
 
 const characteristicUUIDs = ["b42e2a68ade711e489d3123b93f75cba"];
+const globalQueue = new Queue(1, Infinity);
 
 interface Config extends AccessoryConfig {
     serialNumber?: string;
@@ -20,6 +22,12 @@ interface Config extends AccessoryConfig {
     influxToken?: string;
     influxOrg?: string;
     influxBucket?: string;
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => {
+        setTimeout(resolve, ms);
+    });
 }
 
 class HomebridgeWavePlusPlugin implements AccessoryPlugin {
@@ -42,6 +50,7 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
         humidity: -1,
         temp: -1
     };
+    private _lastTime: number = 0;
 
     private _mainTimer: NodeJS.Timer | void;
     private _scanning: boolean = false;
@@ -94,9 +103,10 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
             this.log.warn(warning);
         });
 
-        this.api.on("didFinishLaunching", () => {
+        this.api.on("didFinishLaunching", async () => {
             this.log.debug("Executed didFinishLaunching callback");
-            setTimeout(() => this.main(), 1000 * 10);
+            await sleep(1000 * 5);
+            globalQueue.add(async () => await this.main());
         });
 
         this.log.info("Finished initializing accessory:", this.config.name);
@@ -134,23 +144,34 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
 
         if (noble.state !== 'poweredOn') {
             this.log.warn("Bluetooth LE Power is off. will retry in 10 seconds...");
-            this._mainTimer = setTimeout(() => this.main(), 1000 * 10);
+            this._mainTimer = setTimeout(() => {
+                globalQueue.add(async () => await this.main())
+            }, 1000 * 10);
             return;
         }
-
-        this._mainTimer = setTimeout(() => this.main(), 1000 * Math.max(60, this.config.frequency));
 
         if (!this._peripheral) {
             if (this._scanning === true) {
                 return;
             }
-            this.scan();
+            globalQueue.add(async () => {
+                await this.scan();
+                await this.main();
+            });
             return;
         }
 
-        const peri = this._peripheral;
+        const now = Date.now();
+        const freq = Math.max(60, this.config.frequency);
+        const wait = Math.min(freq, Math.max(30, (now - this._lastTime) / 1000)) * 1000;
 
-        this.log.info("connect to", this.config.serialNumber, "...");
+        this._mainTimer = setTimeout(() => {
+            globalQueue.add(async () => await this.main());
+        }, wait);
+
+        this._lastTime = now;
+
+        const peri = this._peripheral;
 
         if (peri.state !== "disconnected") {
             this.log.warn(`Peripheral state is "${peri.state}".`);
@@ -161,7 +182,8 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
                 peri.cancelConnect();
             } else if (peri.state === "error") {
                 this._peripheral = undefined;
-                setTimeout(() => this.scan(), 1000 * 3);
+                await sleep(1000 * 3);
+                globalQueue.add(async () => await this.scan());
                 try {
                     peri.cancelConnect();
                     peri.disconnectAsync();
@@ -172,31 +194,75 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
             }
         }
 
-        const timeout = setTimeout(() => {
-            this.log.warn("connect has timed out.");
-            try {
-                peri.cancelConnect();
-            } catch (e) {
-                this.log.error(e);
-            }
-        }, 1000 * 50);
+        this.log.info("connect to", this.config.serialNumber, "...");
 
-        // connect
-        try {
-            await peri.connectAsync();
-        } catch (e) {
-            try {
-                await peri.disconnectAsync();
-            } catch (e) {
-                this.log.error(e);
+        const disconnect = async () => {
+            await Promise.race([
+                sleep(1000 * 5),
+                (async () => {
+                    try {
+                        await peri.disconnectAsync();
+                    } catch (e) {
+                        this.log.error(e);
+                    }
+                })()
+            ]);
+        };
+
+        {
+            let done = false;
+            await Promise.race([
+                (async () => {
+                    await sleep(1000 * 20);
+                    if (done === false) {
+                        this.log.warn("connect has timed out.");
+                        try {
+                            peri.cancelConnect();
+                        } catch (e) {
+                            this.log.error(e);
+                        }
+                    }
+                })(),
+                (async () => {
+                    // connect
+                    try {
+                        await peri.connectAsync();
+                        done = true;
+                    } catch (e) {
+                        this.log.error(e);
+                        await disconnect();
+                    }
+                })()
+            ]);
+
+            if (done === false) {
+                await sleep(1000 * 3);
+                return;
             }
-            this.log.error(e);
+        }
+
+        let buf: Buffer;
+        await Promise.race([
+            (async () => {
+                await sleep(1000 * 20);
+                if (!buf) {
+                    this.log.warn("get collection has timed out.");
+                    await disconnect();
+                }
+            })(),
+            (async () => {
+                peri.updateRssi();
+                const char = await peri.discoverSomeServicesAndCharacteristicsAsync([], characteristicUUIDs);
+                buf = await char.characteristics[0].readAsync();
+                await disconnect();
+            })()
+        ]);
+
+        if (!buf) {
+            await sleep(1000 * 3);
             return;
         }
 
-        await peri.updateRssiAsync();
-        const char = await peri.discoverSomeServicesAndCharacteristicsAsync([], characteristicUUIDs);
-        const buf = await char.characteristics[0].readAsync();
         const data = struct.unpack('BBBBHHHHHHHH', buf) as number[];
 
         // note: https://github.com/Airthings/waveplus-reader
@@ -222,7 +288,7 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
             this.log.warn("sensor value is invalid.");
             return;
         }
-        
+
         // for Homebridge / HomeKit
         {
             if (this._aqService) {
@@ -265,7 +331,6 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
                     this._aqService
                         .getCharacteristic(this.Characteristic.VOCDensity)
                         .updateValue(voc);
-                    
                 }
             }
             if (this._co2Service) {
@@ -294,16 +359,6 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
             }
         }
 
-        clearTimeout(timeout);
-
-        // disconnect
-        try {
-            await peri.disconnectAsync();
-        } catch (e) {
-            this.log.error(e);
-            return;
-        }
-
         // for InfluxDB
         if (this._influx) {
             this.log.info("write points to InfluxDB");
@@ -317,54 +372,62 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
                 .floatField("pressure", pressure)
                 .floatField("co2", co2)
                 .floatField("voc", voc);
-            
-            this._influx.writePoint(point);
-            await this._influx.flush();
+
+            try {
+                this._influx.writePoint(point);
+                await this._influx.flush();
+            } catch (e) {
+                this.log.error(e);
+            }
 
             this.log.debug("point:", point);
         }
+
+        await sleep(1000 * 3);
     }
 
-    async scan() {
+    scan(): Promise<void> {
+        return new Promise(resolve => {
 
-        if (this._scanning === true) {
-            return;
-        }
-        this._scanning = true;
+            if (this._scanning === true) {
+                return;
+            }
+            this._scanning = true;
 
-        this.log.info("scanning...");
-        
-        const fin = async () => {
-            this._scanning = false;
-            clearTimeout(timeout);
-            noble.stopScanning();
-            noble.removeListener("discover", onDiscover);
-        };
-        const timeout = setTimeout(() => {
-            this.log.warn("scan has timed out.")
-            fin();
-        }, 1000 * 50);
+            this.log.info("scanning...");
 
-        const onDiscover = async (peripheral: noble.Peripheral) => {
-            const manufacturerData = peripheral.advertisement ? peripheral.advertisement.manufacturerData : undefined;
-            if (manufacturerData && manufacturerData.length > 6) {
-                const deviceInfo = struct.unpack("<HLH", manufacturerData) as number[];
-                // find Wave Plus
-                if (deviceInfo[0] === 0x0334) {
-                    const serialNumber = deviceInfo[1];
-                    // find serialNumber
-                    if (parseInt(this.config.serialNumber, 10) === serialNumber) {
-                        // found
-                        this.log.info(`found: ${serialNumber} (rssi=${peripheral.rssi})`);
-                        this._peripheral = peripheral;
-                        await fin();
-                        this.main();
+            const fin = () => {
+                this._scanning = false;
+                clearTimeout(timeout);
+                noble.stopScanning();
+                noble.removeListener("discover", onDiscover);
+                setTimeout(resolve, 1000 * 3);
+            };
+            const timeout = setTimeout(() => {
+                this.log.warn("scan has timed out.")
+                fin();
+            }, 1000 * 50);
+
+            const onDiscover = (peripheral: noble.Peripheral) => {
+                const manufacturerData = peripheral.advertisement ? peripheral.advertisement.manufacturerData : undefined;
+                if (manufacturerData && manufacturerData.length > 6) {
+                    const deviceInfo = struct.unpack("<HLH", manufacturerData) as number[];
+                    // find Wave Plus
+                    if (deviceInfo[0] === 0x0334) {
+                        const serialNumber = deviceInfo[1];
+                        // find serialNumber
+                        if (parseInt(this.config.serialNumber, 10) === serialNumber) {
+                            // found
+                            this.log.info(`found: ${serialNumber} (rssi=${peripheral.rssi})`);
+                            this._peripheral = peripheral;
+                            fin();
+                        }
                     }
                 }
-            }
-        };
-        noble.on("discover", onDiscover);
+            };
+            noble.on("discover", onDiscover);
 
-        await noble.startScanningAsync([], true);
+            noble.startScanningAsync([], true);
+        });
     }
 }
