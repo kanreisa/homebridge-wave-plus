@@ -160,14 +160,14 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
             } else if (peri.state === "connecting") {
                 peri.cancelConnect();
             } else if (peri.state === "error") {
+                this._peripheral = undefined;
+                setTimeout(() => this.scan(), 1000 * 3);
                 try {
                     peri.cancelConnect();
-                    await peri.disconnectAsync();
+                    peri.disconnectAsync();
                 } catch (e) {
                     this.log.error(e);
                 }
-                this._peripheral = undefined;
-                this.scan();
                 return;
             }
         }
@@ -217,6 +217,11 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
             co2,
             voc
         }));
+
+        if (co2 === 0xFFFF || voc === 0xFFFF) {
+            this.log.warn("sensor value is invalid.");
+            return;
+        }
         
         // for Homebridge / HomeKit
         {
