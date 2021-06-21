@@ -34,7 +34,7 @@
     "test": "",
     "build": "tsc",
     "watch": "tsc -w",
-    "publishOnly": "tsc"
+    "prepublishOnly": "tsc"
   },
   "dependencies": {
     "@influxdata/influxdb-client": "^1.14.0",
