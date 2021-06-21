@@ -113,6 +113,7 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
     }
 
     getServices() {
+
         const informationService = new this.Service.AccessoryInformation()
             .setCharacteristic(this.Characteristic.Manufacturer, this.manufacturer)
             .setCharacteristic(this.Characteristic.Model, this.model)
@@ -213,7 +214,7 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
             let done = false;
             await Promise.race([
                 (async () => {
-                    await sleep(1000 * 20);
+                    await sleep(1000 * 3);
                     if (done === false) {
                         this.log.warn("connect has timed out.");
                         try {
@@ -237,6 +238,7 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
 
             if (done === false) {
                 await sleep(1000 * 3);
+                globalQueue.add(async () => await this.main());
                 return;
             }
         }
@@ -244,7 +246,7 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
         let buf: Buffer;
         await Promise.race([
             (async () => {
-                await sleep(1000 * 20);
+                await sleep(1000 * 3);
                 if (!buf) {
                     this.log.warn("get collection has timed out.");
                     await disconnect();
@@ -260,6 +262,7 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
 
         if (!buf) {
             await sleep(1000 * 3);
+            globalQueue.add(async () => await this.main());
             return;
         }
 
