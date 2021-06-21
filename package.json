@@ -1,7 +1,7 @@
 {
   "displayName": "Homebridge Wave Plus",
   "name": "@kanreisa/homebridge-wave-plus",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A Homebridge Plugin for Airthings Wave Plus. w/ InfluxDB v2 Support.",
   "author": "kanreisa",
   "license": "ISC",
