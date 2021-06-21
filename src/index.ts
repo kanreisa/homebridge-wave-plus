@@ -50,7 +50,6 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
         humidity: -1,
         temp: -1
     };
-    private _lastTime: number = 0;
 
     private _mainTimer: NodeJS.Timer | void;
     private _scanning: boolean = false;
@@ -162,15 +161,10 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
             return;
         }
 
-        const now = Date.now();
-        const freq = Math.max(60, this.config.frequency);
-        const wait = Math.min(freq, Math.max(30, (now - this._lastTime) / 1000)) * 1000;
-
+        const freq = 1000 * Math.max(60, this.config.frequency);
         this._mainTimer = setTimeout(() => {
             globalQueue.add(async () => await this.main());
-        }, wait);
-
-        this._lastTime = now;
+        }, freq);
 
         const peri = this._peripheral;
 
