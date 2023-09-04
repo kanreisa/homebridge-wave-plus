@@ -305,9 +305,9 @@ class HomebridgeWavePlusPlugin implements AccessoryPlugin {
                 } else {
                     aq = Math.max(aq, 2);
                 }
-                if (co2 >= 1000) {
+                if (co2 >= 1500) {
                     aq = Math.max(aq, 5);
-                } else if (co2 >= 800) {
+                } else if (co2 >= 1000) {
                     aq = Math.max(aq, 3);
                 } else {
                     aq = Math.max(aq, 2);
